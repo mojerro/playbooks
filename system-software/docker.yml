@@ -1,40 +1,61 @@
 ---
-   - hosts: test
-     sudo: yes
-     vars:
-         apt_packages_ca:
-             - apt-transport-https
-             - ca-certificates
+- hosts: all
+  become: true
+  vars:
+    container_count: 4
+    default_container_name: docker
+    default_container_image: ubuntu
+    default_container_command: sleep 1d
 
-     tasks:
+  tasks:
+    - name: Install aptitude
+      apt:
+        name: aptitude
+        state: latest
+        update_cache: true
 
-      - name: add docker source list file for install docker
-        file:
-            path: /etc/apt/sources.list.d/docker.list
-            state: touch
-            owner: root
-            mode: 'u+r,g+rw'
+    - name: Install required system packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+        state: latest
+        update_cache: true
 
-      - name: write deb url of docker to docker.list
-        blockinfile:
-            dest: /etc/apt/sources.list.d/docker.list
-            marker: ""
-            block: |
-                deb https://apt.dockerproject.org/repo ubuntu-trusty main
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
 
-      - name: add CA certificates and ensure installed
-        apt:
-            name: "{{ item }}"
-            update_cache: yes
-        with_items: "{{ apt_packages_ca }}"
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
 
-      - name: add apt-key of dockers
-        apt_key:
-            keyserver: p80.pool.sks-keyservers.net
-            id: 58118E89F3A912897C070ADBF76221572C52609D
+    - name: Update apt and install docker-ce
+      apt:
+        name: docker-ce
+        state: latest
+        update_cache: true
 
-      - name: install docker-engine
-        apt:
-            name: docker-engine
-            state: latest
-            force: yes41   ...
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+
+    - name: Pull default Docker image
+      community.docker.docker_image:
+        name: "{{ default_container_image }}"
+        source: pull
+
+    - name: Create default containers
+      community.docker.docker_container:
+        name: "{{ default_container_name }}{{ item }}"
+        image: "{{ default_container_image }}"
+        command: "{{ default_container_command }}"
+        state: present
+      with_sequence: count={{ container_count }}
